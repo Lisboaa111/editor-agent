@@ -1,0 +1,24 @@
+{
+  "name": "simple-shade-agent",
+  "version": "1.0.0",
+  "description": "Simple Shade Agent - ETH Price Oracle",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node -r dotenv/config src/index.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.9",
+    "@neardefi/shade-agent-js": "^0.1.0",
+    "dotenv": "^17.3.1",
+    "hono": "^4.0.0",
+    "near-api-js": "^2.1.4",
+    "near-seed-phrase": "^0.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}

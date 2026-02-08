@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  shade-agent-api:
+    image: neardefi/shade-agent-api:latest
+    ports:
+      - "3140:3140"
+    environment:
+      - NEAR_ACCOUNT_ID=${NEAR_ACCOUNT_ID}
+      - CONTRACT_ID=${CONTRACT_ID}
+      - PHALA_API_KEY=${PHALA_API_KEY}
+    depends_on:
+      - app
