@@ -3,27 +3,37 @@
 @tailwind utilities;
 
 @layer base {
+  * {
+    font-weight: 200;
+  }
+  
   :root {
-    --background: 0 0% 3.5%;
-    --foreground: 0 0% 97%;
-    --card: 0 0% 6%;
-    --card-foreground: 0 0% 97%;
-    --popover: 0 0% 6%;
-    --popover-foreground: 0 0% 97%;
-    --primary: 263 70% 50.4%;
+    --background: 240 10% 3.5%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 4%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 4%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 263 70% 58%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 9%;
-    --secondary-foreground: 0 0% 97%;
-    --muted: 0 0% 12%;
-    --muted-foreground: 0 0% 55%;
-    --accent: 263 70% 50.4%;
+    --secondary: 240 3.7% 9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 12%;
+    --muted-foreground: 240 5% 55%;
+    --accent: 263 70% 58%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 14%;
-    --input: 0 0% 14%;
-    --ring: 263 70% 50.4%;
+    --border: 240 3.7% 15%;
+    --input: 240 3.7% 15%;
+    --ring: 263 70% 58%;
     --radius: 0.625rem;
+    
+    /* Extended colors */
+    --violet: 263 70% 58%;
+    --indigo: 243 75% 59%;
+    --fuchsia: 292 70% 56%;
+    --zinc: 240 5% 26%;
   }
 }
 
@@ -53,6 +63,7 @@
 body {
   background: hsl(var(--background));
   color: hsl(var(--foreground));
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
 @layer utilities {
