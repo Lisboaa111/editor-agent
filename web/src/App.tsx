@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Play,
   Pause,
@@ -22,15 +22,75 @@ import {
   ZoomOut,
   Search,
   Plus,
+  Wallet,
+  CreditCard,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
+import { getNearAccount, sendNearPayment } from "./lib/agent"
+import { PRICING, PACKAGES } from "./config"
 
 function App() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
+  const [agentAccountId, setAgentAccountId] = useState<string>("")
+  const [agentBalance, setAgentBalance] = useState<string>("0")
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [selectedPackage, setSelectedPackage] = useState<string | null>(null)
+  const [credits, setCredits] = useState(0)
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+  const [paymentStatus, setPaymentStatus] = useState<string>("")
+
+  useEffect(() => {
+    fetchAgentAccount()
+  }, [])
+
+  const fetchAgentAccount = async () => {
+    try {
+      const account = await getNearAccount()
+      setAgentAccountId(account.accountId)
+      setAgentBalance(account.balance)
+    } catch (error) {
+      console.error("Failed to fetch agent account:", error)
+    }
+  }
+
+  const handlePurchase = async (packageId: string) => {
+    const pkg = PACKAGES.find(p => p.id === packageId)
+    if (!pkg || !agentAccountId) return
+
+    setSelectedPackage(packageId)
+    setIsProcessingPayment(true)
+    setPaymentStatus("Processing payment...")
+
+    try {
+      await sendNearPayment(agentAccountId, pkg.price.toString(), true)
+      setPaymentStatus("Payment successful!")
+      setCredits(prev => prev + pkg.credits)
+      setTimeout(() => {
+        setShowPaymentModal(false)
+        setSelectedPackage(null)
+        setPaymentStatus("")
+      }, 2000)
+    } catch (error) {
+      console.error("Payment failed:", error)
+      setPaymentStatus("Payment failed. Please try again.")
+    } finally {
+      setIsProcessingPayment(false)
+    }
+  }
+
+  const handleExport = (quality: string) => {
+    const cost = PRICING[`export_${quality}` as keyof typeof PRICING]
+    if (credits >= parseFloat(cost) || cost === undefined) {
+      alert(`Exporting at ${quality}... (Demo)`)
+    } else {
+      setShowPaymentModal(true)
+    }
+  }
 
   return (
     <div className="h-screen flex flex-col bg-[#0d0d0d] text-[#e5e5e5]">
@@ -48,8 +108,18 @@ function App() {
         </div>
         
         <div className="flex items-center gap-3">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-xs h-7 px-3 gap-2"
+            onClick={() => setShowPaymentModal(true)}
+          >
+            <Wallet className="w-3 h-3" />
+            <CreditCard className="w-3 h-3" />
+            <span>{credits} credits</span>
+          </Button>
           <span className="text-xs text-[#525252]">Auto-saved</span>
-          <Button variant="ghost" size="sm" className="text-xs h-7 px-3">
+          <Button variant="ghost" size="sm" className="text-xs h-7 px-3" onClick={() => handleExport('1080p')}>
             Export
           </Button>
         </div>
@@ -247,6 +317,70 @@ function App() {
           </aside>
         )}
       </div>
+
+      {/* Payment Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowPaymentModal(false)}>
+          <div className="bg-[#171717] border border-[#303030] rounded-lg p-6 w-[400px] max-w-[90vw]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-[#d4d4d4]">Purchase Credits</h2>
+              <Button variant="ghost" size="icon" className="w-6 h-6" onClick={() => setShowPaymentModal(false)}>
+                <span className="text-xl">&times;</span>
+              </Button>
+            </div>
+
+            {agentAccountId && (
+              <div className="mb-4 p-3 bg-[#0d0d0d] rounded border border-[#262626]">
+                <p className="text-xs text-[#525252] mb-1">Agent Account</p>
+                <p className="text-xs text-[#a3a3a3] font-mono">{agentAccountId}</p>
+                <p className="text-xs text-[#525252] mt-2">Balance</p>
+                <p className="text-sm text-[#d4d4d4]">{agentBalance} NEAR</p>
+              </div>
+            )}
+
+            <div className="mb-4">
+              <p className="text-sm text-[#a3a3a3] mb-2">Current Credits: <span className="text-[#d4d4d4] font-bold">{credits}</span></p>
+            </div>
+
+            <div className="space-y-2 mb-4">
+              {PACKAGES.map((pkg) => (
+                <button
+                  key={pkg.id}
+                  onClick={() => handlePurchase(pkg.id)}
+                  disabled={isProcessingPayment}
+                  className={`w-full p-3 rounded border flex items-center justify-between transition-colors ${
+                    selectedPackage === pkg.id 
+                      ? "border-[#00c08b] bg-[#00c08b]/10" 
+                      : "border-[#303030] hover:border-[#404040] bg-[#0d0d0d]"
+                  }`}
+                >
+                  <div className="text-left">
+                    <p className="text-sm text-[#d4d4d4] font-medium">{pkg.name}</p>
+                    <p className="text-xs text-[#525252]">{pkg.credits} credits</p>
+                  </div>
+                  <Badge variant="secondary" className="bg-[#262626] text-[#a3a3a3]">
+                    {pkg.price} NEAR
+                  </Badge>
+                </button>
+              ))}
+            </div>
+
+            {paymentStatus && (
+              <div className={`p-3 rounded text-sm text-center ${
+                paymentStatus.includes("success") 
+                  ? "bg-[#00c08b]/10 text-[#00c08b]" 
+                  : "bg-red-900/20 text-red-400"
+              }`}>
+                {paymentStatus}
+              </div>
+            )}
+
+            <p className="text-xs text-[#525252] mt-4 text-center">
+              Payments powered by Shade Agent on NEAR Testnet
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
