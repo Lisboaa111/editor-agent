@@ -182,7 +182,7 @@ export function ChatPanel({
   }
 
   return (
-    <div className="w-80 border-l border-[#262626] flex flex-col bg-[#0d0d0d]">
+    <div className="w-72 border-l border-[#262626] flex flex-col bg-[#0d0d0d]">
       <div className="p-3 border-b border-[#262626] flex items-center justify-between">
         <span className="text-sm text-[#a3a3a3]">AI Assistant</span>
         <Button variant="ghost" size="icon" className="w-6 h-6" onClick={onClose}>
@@ -324,7 +324,7 @@ export function ExportPanel({
   const price = calculatePrice(settings.quality, settings.length, settings.format, settings.hasAudio)
 
   return (
-    <div className="w-64 border-l border-[#262626] bg-[#0d0d0d] p-4 space-y-4">
+    <div className="w-56 border-l border-[#262626] bg-[#0d0d0d] p-4 space-y-4">
       <h3 className="text-sm font-medium text-[#a3a3a3]">Export Settings</h3>
 
       <div className="space-y-3">

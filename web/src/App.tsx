@@ -1,11 +1,9 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useCallback } from "react"
 import { 
   FileVideo,
   PanelLeftOpen,
   PanelRightOpen,
   MessageCircle,
-  Undo,
-  Redo,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { NearWalletProvider } from "./contexts/NearWallet"
@@ -41,6 +39,8 @@ function AppContent() {
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewType, setPreviewType] = useState<'video' | 'image' | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
   
   const [exportSettings] = useState<ExportSettings>({
     quality: "1080p",
@@ -52,13 +52,48 @@ function AppContent() {
   const { user } = useCreditsStore()
   const { 
     addClip, 
-    undo, 
-    redo, 
     currentTime,
+    setCurrentTime,
     addTextOverlay,
   } = useTimelineStore()
   
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  // Simple video sync - just track time from video
+  const handlePlayPause = useCallback((playing: boolean) => {
+    if (videoRef.current) {
+      if (playing) {
+        videoRef.current.play().catch(console.error)
+      } else {
+        videoRef.current.pause()
+      }
+    }
+    setIsPlaying(playing)
+  }, [])
+
+  const handleClipSelect = useCallback((_clipId: string, mediaUrl?: string) => {
+    if (mediaUrl) {
+      setPreviewUrl(mediaUrl)
+      setPreviewType('video')
+    }
+  }, [])
+
+  const getVideoDuration = useCallback((file: File): Promise<number> => {
+    return new Promise((resolve) => {
+      const video = document.createElement('video')
+      video.preload = 'metadata'
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(video.src)
+        resolve(video.duration || 5)
+      }
+      video.onerror = () => {
+        URL.revokeObjectURL(video.src)
+        resolve(5)
+      }
+      video.src = URL.createObjectURL(file)
+    })
+  }, [])
 
   const exportPrice = calculatePrice(
     exportSettings.quality, 
@@ -104,16 +139,45 @@ function AppContent() {
     }
   }
 
-  const handleImportMedia = (newFiles: File[]) => {
+  const handleImportMedia = async (newFiles: File[]) => {
+    // Get duration for videos and add to timeline
+    for (const file of newFiles) {
+      if (file.type.startsWith('video/')) {
+        const dur = await getVideoDuration(file)
+        Object.defineProperty(file, 'duration', { value: dur, writable: true })
+        
+        // Auto-add to timeline
+        const media: MediaItem = {
+          id: generateId(),
+          name: file.name,
+          type: 'video',
+          url: URL.createObjectURL(file),
+          duration: dur,
+        }
+        addClip('video-1', media)
+      } else if (file.type.startsWith('image/')) {
+        const media: MediaItem = {
+          id: generateId(),
+          name: file.name,
+          type: 'image',
+          url: URL.createObjectURL(file),
+          duration: 5, // Default image duration
+        }
+        addClip('video-1', media)
+      }
+    }
+    
     setMediaFiles(prev => [...prev, ...newFiles])
     
     const firstFile = newFiles[0]
     if (firstFile) {
       if (firstFile.type.startsWith("image/")) {
         setPreviewUrl(URL.createObjectURL(firstFile))
+        setPreviewType('image')
       } else if (firstFile.type.startsWith("video/")) {
         const url = URL.createObjectURL(firstFile)
         setPreviewUrl(url)
+        setPreviewType('video')
       }
     }
   }
@@ -125,8 +189,12 @@ function AppContent() {
   const handleSelectMedia = (media: MediaItem) => {
     setSelectedMediaId(media.id)
     
-    if (media.type === 'image' || media.type === 'video') {
+    if (media.type === 'video') {
       setPreviewUrl(media.url)
+      setPreviewType('video')
+    } else if (media.type === 'image') {
+      setPreviewUrl(media.url)
+      setPreviewType('image')
     }
   }
 
@@ -134,12 +202,14 @@ function AppContent() {
     const file = mediaFiles[0]
     if (!file) return
 
+    const fileDuration = (file as File & { duration?: number }).duration || 5
+
     const media: MediaItem = {
       id: generateId(),
       name: file.name,
       type: file.type.startsWith('video/') ? 'video' : file.type.startsWith('image/') ? 'image' : 'audio',
       url: URL.createObjectURL(file),
-      duration: 5,
+      duration: fileDuration,
     }
 
     addClip('video-1', media)
@@ -168,29 +238,6 @@ function AppContent() {
               <FileVideo className="w-4 h-4 text-[#00c08b]" />
             </div>
             <span className="text-sm font-medium text-[#d4d4d4]">ReelForge</span>
-          </div>
-          <div className="h-4 w-px bg-[#333]" />
-          
-          {/* Undo/Redo */}
-          <div className="flex items-center gap-1">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="w-7 h-7"
-              onClick={undo}
-              title="Undo"
-            >
-              <Undo className="w-3.5 h-3.5" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="w-7 h-7"
-              onClick={redo}
-              title="Redo"
-            >
-              <Redo className="w-3.5 h-3.5" />
-            </Button>
           </div>
         </div>
         
@@ -230,26 +277,38 @@ function AppContent() {
         )}
 
         {/* Center - Preview */}
-        <main className="flex-1 flex flex-col">
-          <div className="flex-1 flex items-center justify-center p-4 bg-[#0a0a0a]">
-            {previewUrl ? (
-              <div className="aspect-[9/16] max-h-full max-w-full bg-[#141414] border border-[#262626] flex items-center justify-center rounded overflow-hidden">
-                {previewUrl.includes('video') || mediaFiles.find(f => f.name === selectedMediaId)?.type.startsWith('video') ? (
-                  <video 
-                    src={previewUrl}
-                    className="max-h-full max-w-full object-contain"
-                    controls
-                  />
-                ) : (
-                  <img 
-                    src={previewUrl} 
-                    alt="Preview" 
-                    className="max-h-full max-w-full object-contain"
-                  />
-                )}
+        <main className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 flex items-center justify-center p-1 bg-[#0a0a0a] overflow-hidden">
+            {previewUrl && previewType === 'video' ? (
+              <div className="h-full max-w-[50%] aspect-video bg-[#141414] border border-[#262626] flex items-center justify-center rounded overflow-hidden">
+                <video 
+                  ref={videoRef}
+                  src={previewUrl}
+                  className="max-h-full max-w-full object-contain"
+                  onTimeUpdate={() => {
+                    if (videoRef.current) {
+                      setCurrentTime(videoRef.current.currentTime)
+                    }
+                  }}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                  onEnded={() => {
+                    setIsPlaying(false)
+                    setCurrentTime(0)
+                  }}
+                  onError={(e) => console.error('Video error:', e)}
+                />
+              </div>
+            ) : previewUrl && previewType === 'image' ? (
+              <div className="h-full max-w-[50%] aspect-video bg-[#141414] border border-[#262626] flex items-center justify-center rounded overflow-hidden">
+                <img 
+                  src={previewUrl} 
+                  alt="Preview" 
+                  className="max-h-full max-w-full object-contain"
+                />
               </div>
             ) : (
-              <div className="aspect-[9/16] max-h-full bg-[#141414] border border-[#262626] flex items-center justify-center rounded">
+              <div className="h-full max-w-[50%] aspect-video bg-[#141414] border border-[#262626] flex items-center justify-center rounded">
                 <div className="text-center">
                   <FileVideo className="w-12 h-12 text-[#262626] mx-auto mb-2" />
                   <p className="text-xs text-[#525252]">Import media to preview</p>
@@ -269,7 +328,11 @@ function AppContent() {
           </div>
 
           {/* Timeline */}
-          <Timeline />
+          <Timeline 
+            isPlaying={isPlaying}
+            onPlayPause={handlePlayPause}
+            onClipSelect={handleClipSelect}
+          />
         </main>
 
         {/* Right - Chat & Properties */}

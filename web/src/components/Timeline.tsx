@@ -16,12 +16,14 @@ import { formatTime } from "../utils/time"
 interface TimelineProps {
   onSplit?: () => void;
   onDelete?: () => void;
+  isPlaying?: boolean;
+  onPlayPause?: (playing: boolean) => void;
+  onClipSelect?: (clipId: string, mediaUrl?: string) => void;
 }
 
-export function Timeline({ onSplit, onDelete }: TimelineProps) {
+export function Timeline({ onSplit, onDelete, isPlaying = false, onPlayPause, onClipSelect }: TimelineProps) {
   const timelineRef = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(1)
-  const [isPlaying, setIsPlaying] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   
   const { 
@@ -46,9 +48,15 @@ export function Timeline({ onSplit, onDelete }: TimelineProps) {
     setCurrentTime(newTime)
   }, [duration, zoom, setCurrentTime])
 
-  const handleClipClick = (e: React.MouseEvent, clipId: string) => {
+  const handleClipClick = (e: React.MouseEvent, clipId: string, mediaUrl?: string) => {
     e.stopPropagation()
     selectClip(clipId)
+    onClipSelect?.(clipId, mediaUrl)
+  }
+
+  const handlePlayPauseLocal = () => {
+    const newPlaying = !isPlaying
+    onPlayPause?.(newPlaying)
   }
 
   const handleSplit = () => {
@@ -76,7 +84,7 @@ export function Timeline({ onSplit, onDelete }: TimelineProps) {
             variant="ghost" 
             size="icon" 
             className="w-7 h-7"
-            onClick={() => setIsPlaying(!isPlaying)}
+            onClick={handlePlayPauseLocal}
           >
             {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
           </Button>
@@ -204,7 +212,7 @@ export function Timeline({ onSplit, onDelete }: TimelineProps) {
               {track.clips.map((clip) => (
                 <div
                   key={clip.id}
-                  onClick={(e) => handleClipClick(e, clip.id)}
+                  onClick={(e) => handleClipClick(e, clip.id, clip.media?.url)}
                   className={`absolute top-1 h-6 rounded cursor-pointer transition-colors ${
                     selectedClipId === clip.id 
                       ? "bg-[#00c08b] text-black" 

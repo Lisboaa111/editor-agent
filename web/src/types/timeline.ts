@@ -72,7 +72,7 @@ export function createDefaultTimeline(): TimelineState {
     ],
     textOverlays: [],
     transitions: [],
-    duration: 0,
+    duration: 60,
     currentTime: 0,
     selectedClipId: null,
   };

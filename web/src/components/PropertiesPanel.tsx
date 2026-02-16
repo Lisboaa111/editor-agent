@@ -34,7 +34,7 @@ export function PropertiesPanel({ onAddText, onAddImage }: PropertiesPanelProps)
   const [activeTab, setActiveTab] = useState<'clip' | 'text'>('clip')
 
   return (
-    <div className="w-64 border-l border-[#262626] bg-[#0d0d0d] flex flex-col">
+    <div className="w-56 border-l border-[#262626] bg-[#0d0d0d] flex flex-col">
       {/* Tabs */}
       <div className="flex border-b border-[#262626]">
         <button

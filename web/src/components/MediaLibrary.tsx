@@ -24,6 +24,7 @@ export function MediaLibrary({
   files, 
   onImport, 
   onRemove,
+  onSelectMedia,
 }: MediaLibraryProps) {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [searchQuery, setSearchQuery] = useState('')
@@ -67,7 +68,7 @@ export function MediaLibrary({
 
   return (
     <div 
-      className="w-64 border-r border-[#262626] flex flex-col bg-[#0d0d0d]"
+      className="w-56 border-r border-[#262626] flex flex-col bg-[#0d0d0d]"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
@@ -139,6 +140,13 @@ export function MediaLibrary({
                 <div
                   key={idx}
                   className="relative aspect-square rounded overflow-hidden cursor-pointer group"
+                  onClick={() => onSelectMedia?.({
+                    id: file.name,
+                    name: file.name,
+                    type,
+                    url: URL.createObjectURL(file),
+                    duration: 0,
+                  })}
                 >
                   {type === 'image' ? (
                     <img
@@ -181,6 +189,13 @@ export function MediaLibrary({
                 <div
                   key={idx}
                   className="flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-[#1a1a1a]"
+                  onClick={() => onSelectMedia?.({
+                    id: file.name,
+                    name: file.name,
+                    type,
+                    url: URL.createObjectURL(file),
+                    duration: 0,
+                  })}
                 >
                   <div className="w-10 h-10 bg-[#171717] rounded flex items-center justify-center shrink-0">
                     {getIcon(type)}
