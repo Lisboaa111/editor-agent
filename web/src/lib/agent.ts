@@ -191,7 +191,8 @@ export async function processVideo(
   length: number = 15,
   format: string = 'mp4',
   hasAudio: boolean = true,
-  plan?: EditingPlan
+  plan?: EditingPlan,
+  musicUrl?: string
 ): Promise<{ success: boolean; jobId: string; status: string }> {
   const res = await fetch(`${API_URL}/api/video/process`, {
     method: "POST",
@@ -204,6 +205,7 @@ export async function processVideo(
       format,
       hasAudio,
       plan,
+      musicUrl,
     }),
   });
   if (!res.ok) {
@@ -217,4 +219,23 @@ export async function getJobStatus(jobId: string): Promise<VideoJob> {
   const res = await fetch(`${API_URL}/api/video/status/${jobId}`);
   if (!res.ok) throw new Error("Failed to get job status");
   return res.json();
+}
+
+export interface MusicTrack {
+  id: string;
+  name: string;
+  artist: string;
+  duration: number;
+  bpm: number;
+  mood: string;
+  genre: string;
+  url?: string;
+  tags: string[];
+}
+
+export async function getMusicTracks(): Promise<MusicTrack[]> {
+  const res = await fetch(`${API_URL}/api/music/tracks`);
+  if (!res.ok) throw new Error("Failed to fetch music");
+  const data = await res.json();
+  return data.tracks;
 }

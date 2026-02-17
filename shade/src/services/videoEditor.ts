@@ -133,23 +133,21 @@ export class VideoEditor {
     console.log(`🎬 Starting video generation: ${this.jobId}`);
     
     const videoConfig = { ...DEFAULT_VIDEO, ...plan.video };
-    const inputs: string[] = [];
-
-    for (const clip of plan.clips) {
-      inputs.push("-i", clip.inputPath);
-    }
-
-    const outputPath = path.join(this.outputDir, `${this.jobId}.${videoConfig.format}`);
+    const hasBackgroundMusic = !!plan.audio?.backgroundMusic;
+    const musicPath = hasBackgroundMusic ? plan.audio.backgroundMusic : null;
+    const musicVolume = plan.audio?.musicVolume ?? 0.5;
     
-    let filterComplex = "";
-    const filterParts: string[] = [];
+    const outputPath = path.join(this.outputDir, `${this.jobId}.${videoConfig.format}`);
+    const tempVideoPath = path.join(this.tempDir, `${this.jobId}_video.mp4`);
     
     const scaleFilter = `scale=${videoConfig.width}:${videoConfig.height}:force_original_aspect_ratio=decrease,pad=${videoConfig.width}:${videoConfig.height}:(ow-iw)/2:(oh-ih)/2,setsar=1`;
-
+    
+    let videoArgs: string[] = [];
+    let videoFilterParts: string[] = [];
+    
     if (plan.clips.length === 1) {
       const clip = plan.clips[0];
       let clipFilter = `[0:v]`;
-      
       if (clip.trimStart !== undefined) {
         clipFilter += `trim=start=${clip.trimStart},setpts=PTS-STARTPTS,`;
       }
@@ -157,13 +155,11 @@ export class VideoEditor {
         clipFilter += `setpts=${1/clip.speed}*PTS,`;
       }
       clipFilter += scaleFilter;
-      
-      filterParts.push(clipFilter + "[outv]");
+      videoFilterParts.push(clipFilter);
     } else {
       for (let i = 0; i < plan.clips.length; i++) {
         const clip = plan.clips[i];
         let clipFilter = `[${i}:v]`;
-        
         if (clip.trimStart !== undefined) {
           clipFilter += `trim=start=${clip.trimStart},setpts=PTS-STARTPTS,`;
         }
@@ -171,47 +167,81 @@ export class VideoEditor {
           clipFilter += `setpts=${1/clip.speed}*PTS,`;
         }
         clipFilter += scaleFilter;
-        
-        filterParts.push(clipFilter + `[v${i}]`);
+        videoFilterParts.push(clipFilter);
       }
       
       let concatInputs = "";
       for (let i = 0; i < plan.clips.length; i++) {
         concatInputs += `[v${i}]`;
       }
-      filterParts.push(`${concatInputs}concat=n=${plan.clips.length}:v=1:a=0[outv]`);
+      videoFilterParts.push(`${concatInputs}concat=n=${plan.clips.length}:v=1:a=0`);
     }
-
-    filterComplex = filterParts.join(";");
-
-    const args = [
+    
+    const videoFilter = videoFilterParts.join(";");
+    
+    const inputArgs: string[] = [];
+    for (const clip of plan.clips) {
+      inputArgs.push("-i", clip.inputPath);
+    }
+    
+    console.log("Step 1: Processing video...");
+    const videoArgsFinal = [
       "-y",
-      ...inputs,
-      "-filter_complex", filterComplex,
-      "-map", "[outv]",
-      "-c:v", videoConfig.codec,
+      ...inputArgs,
+      "-filter_complex", videoFilter,
+      "-map", "0:v",
+      "-c:v", "libx264",
       "-preset", "ultrafast",
       "-crf", "28",
-      "-r", videoConfig.fps.toString(),
-      "-c:a", "aac",
-      "-b:a", "128k",
-      outputPath,
+      "-r", "30",
+      tempVideoPath,
     ];
-
-    console.log("FFmpeg args:", args.join(" "));
     
-    await this.runFFmpeg(args);
-
-    if (!fs.existsSync(outputPath)) {
-      throw new Error("Output file not created");
+    console.log("Video FFmpeg args:", videoArgsFinal.join(" "));
+    await this.runFFmpeg(videoArgsFinal);
+    
+    if (!fs.existsSync(tempVideoPath)) {
+      throw new Error("Video processing failed - no output file");
     }
-
+    
+    if (hasBackgroundMusic && musicPath) {
+      console.log("Step 2: Adding background music...");
+      
+      const escapedMusicPath = musicPath.replace(/"/g, '\\"');
+      
+      const audioArgs = [
+        "-y",
+        "-i", tempVideoPath,
+        "-i", escapedMusicPath,
+        "-filter_complex", `[1:a]volume=${musicVolume}[music]`,
+        "-map", "0:v",
+        "-map", "[music]",
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-shortest",
+        outputPath,
+      ];
+      
+      console.log("Audio FFmpeg args:", audioArgs.join(" "));
+      await this.runFFmpeg(audioArgs);
+      
+      fs.unlinkSync(tempVideoPath);
+    } else {
+      fs.renameSync(tempVideoPath, outputPath);
+    }
+    
+    if (!fs.existsSync(outputPath)) {
+      throw new Error("Final video not created");
+    }
+    
     const stats = fs.statSync(outputPath);
     console.log(`✅ Video generated: ${outputPath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
-
+    
     return outputPath;
   }
 
+  // Legacy method kept for compatibility
   private buildVideoFilters(
     clips: ClipConfig[],
     transitions: TransitionConfig[],
@@ -368,7 +398,13 @@ export class VideoEditor {
 
   private runFFmpeg(args: string[]): Promise<void> {
     return new Promise((resolve, reject) => {
-      console.log("Running FFmpeg with args:", args.slice(0, 10), "...");
+      const safeArgs = args.map(arg => {
+        if (arg.includes(' ') || arg.includes('(') || arg.includes(')')) {
+          return `"${arg}"`;
+        }
+        return arg;
+      });
+      console.log("Running FFmpeg command:", "ffmpeg " + safeArgs.join(" "));
       
       this.ffmpegProcess = spawn("ffmpeg", args);
       
@@ -383,7 +419,8 @@ export class VideoEditor {
         if (code === 0) {
           resolve();
         } else {
-          reject(new Error(`FFmpeg exited with code ${code}`));
+          console.error("FFmpeg stderr:", stderr);
+          reject(new Error(`FFmpeg exited with code ${code}\n${stderr}`));
         }
       });
       

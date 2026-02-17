@@ -31,6 +31,7 @@ export interface ReelRequest {
   targetStyle?: 'viral' | 'cinematic' | 'fun' | 'educational' | 'dramatic';
   aspectRatio?: '9:16' | '16:9' | '1:1';
   generateVariations?: number;
+  musicUrl?: string;
 }
 
 export interface ReelJob {
@@ -310,9 +311,16 @@ class ReelGenerator {
   private buildAudioConfig(plan: any, request: ReelRequest): AudioConfig {
     const audio = plan.audio || {};
     
+    let musicPath = request.audio?.path;
+    if (request.musicUrl) {
+      musicPath = request.musicUrl.startsWith('/media/') 
+        ? '.' + request.musicUrl 
+        : request.musicUrl;
+    }
+    
     return {
-      backgroundMusic: request.audio?.path,
-      musicVolume: audio.volume || 0.3,
+      backgroundMusic: musicPath,
+      musicVolume: audio.volume || 0.7,
       originalVolume: audio.originalVolume || 0.8,
       fadeIn: audio.fadeIn || 0.5,
       fadeOut: audio.fadeOut || 0.5,

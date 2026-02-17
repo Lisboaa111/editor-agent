@@ -12,6 +12,17 @@ export interface MusicTrack {
 
 export const MUSIC_LIBRARY: MusicTrack[] = [
   {
+    id: "custom-1",
+    name: "Trillium (Slowed + Reverb)",
+    artist: "S3RL ft Sara",
+    duration: 48,
+    bpm: 90,
+    mood: "energetic",
+    genre: "Electronic",
+    url: "/media/S3RL(ft Sara) - Trillium(Slowed + Reverb) [edit audio].mp3",
+    tags: ["energetic", "electronic", "dance", "edm"],
+  },
+  {
     id: "upbeat-1",
     name: "Electric Dreams",
     artist: "ReelForge",

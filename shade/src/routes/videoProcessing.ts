@@ -36,12 +36,13 @@ interface VideoRequest {
   aspectRatio?: '9:16' | '16:9' | '1:1';
   generateVariations?: number;
   plan?: object;
+  musicUrl?: string;
 }
 
 app.post("/process", async (c) => {
   try {
     const body = await c.req.json() as VideoRequest;
-    const { clips, audio, prompt, quality, length, format, hasAudio, targetStyle, aspectRatio, generateVariations, plan } = body;
+    const { clips, audio, prompt, quality, length, format, hasAudio, targetStyle, aspectRatio, generateVariations, plan, musicUrl } = body;
 
     if (!clips || clips.length === 0) {
       return c.json({ error: "No clips provided" }, 400);
@@ -77,6 +78,7 @@ app.post("/process", async (c) => {
       targetStyle: targetStyle || 'viral',
       aspectRatio: aspectRatio || '9:16',
       generateVariations,
+      musicUrl,
     };
 
     const jobId = await reelGenerator.generateReel(request);

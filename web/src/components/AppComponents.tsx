@@ -25,9 +25,11 @@ import {
   processVideo, 
   getJobStatus, 
   refineEditingPlan,
+  getMusicTracks,
   type EditingPlan,
   type TimelineClip,
-  type TextOverlay 
+  type TextOverlay,
+  type MusicTrack
 } from "../lib/agent";
 import { PACKAGES, calculatePrice, EXPORT_QUALITY, VIDEO_FORMATS, VIDEO_LENGTHS } from "../config";
 
@@ -346,6 +348,12 @@ export function ExportPanel({
   const [editingPlan, setEditingPlan] = useState<EditingPlan | null>(null)
   const [aiPrompt, setAiPrompt] = useState('')
   const [refineFeedback, setRefineFeedback] = useState('')
+  const [musicTracks, setMusicTracks] = useState<MusicTrack[]>([])
+  const [selectedMusic, setSelectedMusic] = useState<MusicTrack | null>(null)
+
+  useEffect(() => {
+    getMusicTracks().then(setMusicTracks).catch(console.error)
+  }, [])
 
   const handleGenerateWithAI = async () => {
     if (timelineClips.length === 0) {
@@ -395,7 +403,8 @@ export function ExportPanel({
         settings.length,
         settings.format,
         settings.hasAudio,
-        editingPlan || undefined
+        editingPlan || undefined,
+        selectedMusic?.url || undefined
       )
       
       if (result.success) {
@@ -504,6 +513,34 @@ export function ExportPanel({
           />
           <label htmlFor="audio" className="text-xs text-[#a3a3a3]">Include Audio</label>
         </div>
+
+        {settings.hasAudio && (
+          <div className="space-y-2">
+            <label className="text-xs text-[#525252] block">Background Music</label>
+            <select
+              value={selectedMusic?.id || ''}
+              onChange={(e) => {
+                const track = musicTracks.find(t => t.id === e.target.value) || null;
+                setSelectedMusic(track);
+              }}
+              className="w-full h-8 bg-[#171717] border border-[#303030] rounded px-2 text-xs"
+            >
+              <option value="">No music</option>
+              {musicTracks.filter(t => t.url).map(track => (
+                <option key={track.id} value={track.id}>
+                  {track.name} - {track.artist}
+                </option>
+              ))}
+            </select>
+            {selectedMusic?.url && (
+              <audio
+                controls
+                src={`${API_URL}${selectedMusic.url}`}
+                className="w-full h-8 mt-1"
+              />
+            )}
+          </div>
+        )}
       </div>
 
       <div className="pt-4 border-t border-[#262626] space-y-2">
