@@ -87,6 +87,8 @@ class ReelGenerator {
     const job = this.jobs.get(jobId);
     if (!job) return;
 
+    console.log("processReel request:", JSON.stringify(request, null, 2));
+    
     try {
       // Step 1: Analyze audio if present
       job.status = 'analyzing';
@@ -96,8 +98,14 @@ class ReelGenerator {
       let audioAnalysis: AudioAnalysis | undefined;
       let advancedAudioAnalysis: AdvancedAudioAnalysis | undefined;
       
-      if (request.audio) {
-        audioAnalysis = await analyzeAudio(request.audio.path);
+      // Analyze background music if available
+      const musicPath = request.musicUrl 
+        ? (request.musicUrl.startsWith('/media/') ? '.' + request.musicUrl : request.musicUrl)
+        : request.audio?.path;
+      
+      if (musicPath) {
+        console.log("Analyzing music:", musicPath);
+        audioAnalysis = await analyzeAudio(musicPath);
         advancedAudioAnalysis = {
           duration: audioAnalysis.duration,
           bpm: audioAnalysis.bpm,
@@ -107,7 +115,7 @@ class ReelGenerator {
         };
         
         job.progress = 30;
-        job.progressMessage = 'Audio analyzed!';
+        job.progressMessage = `Audio analyzed! ${audioAnalysis.bpm} BPM, ${audioAnalysis.beats.length} beats`;
       }
 
       // Step 2: Generate editing plans with AI
@@ -197,11 +205,32 @@ class ReelGenerator {
 
   private async executePlan(plan: any, request: ReelRequest, jobId: string, variationIndex: number): Promise<string> {
     const videoConfig: VideoConfig = this.parseVideoConfig(plan, request);
-    const clips = this.buildClips(plan, request);
+    let clips = this.buildClips(plan, request);
     const transitions = this.buildTransitions(plan, request);
     const effects = this.buildEffects(plan);
     const textOverlays = this.buildTextOverlays(plan);
     const audioConfig = this.buildAudioConfig(plan, request);
+
+    // Get beats from audio analysis - but DON'T apply beat sync for now (breaks video)
+    // TODO: Fix beat sync properly
+    /*
+    const musicPath = request.musicUrl 
+      ? (request.musicUrl.startsWith('/media/') ? '.' + request.musicUrl : request.musicUrl)
+      : request.audio?.path;
+    
+    if (musicPath && request.targetDuration) {
+      try {
+        const audioAnalysis = await analyzeAudio(musicPath);
+        if (audioAnalysis.beats && audioAnalysis.beats.length > 0) {
+          console.log(`🎵 Got audio analysis: ${audioAnalysis.bpm} BPM, ${audioAnalysis.beats.length} beats`);
+          // Apply beat-synced editing
+          clips = this.applyBeatSyncEditing(clips, audioAnalysis.beats, request.targetDuration, audioAnalysis.mood);
+        }
+      } catch (error) {
+        console.error("Beat sync failed:", error);
+      }
+    }
+    */
 
     const editingPlan: EditingPlan = {
       clips,
@@ -212,15 +241,67 @@ class ReelGenerator {
       audio: audioConfig,
     };
 
+    console.log("Final editing plan clips:", JSON.stringify(clips.map(c => ({ id: c.id, trimStart: c.trimStart, trimEnd: c.endTime })), null, 2));
+
     const editor = createVideoEditor(OUTPUT_DIR);
     
     const suffix = variationIndex > 0 ? `_variation_${variationIndex}` : '';
     const outputPath = await editor.generate({
       ...editingPlan,
-      // Override to use job-based naming
     } as EditingPlan);
 
     return outputPath;
+  }
+
+  private applyBeatSyncEditing(
+    clips: ClipConfig[], 
+    beats: number[], 
+    targetDuration: number,
+    mood: string
+  ): ClipConfig[] {
+    if (clips.length === 0 || beats.length === 0) return clips;
+
+    console.log(`Applying beat-synced editing with ${beats.length} beats, mood: ${mood}`);
+
+    // Get first few beats for editing
+    const firstBeats = beats.slice(0, 20).filter(b => b <= targetDuration);
+    
+    // Calculate clip durations based on beats
+    const totalClipDuration = clips.reduce((sum, c) => sum + (c.endTime - (c.trimStart || 0)), 0);
+    const durationPerClip = totalClipDuration / clips.length;
+    
+    // For energetic songs, make cuts more frequent
+    const newClips: ClipConfig[] = [];
+    const isEnergetic = mood === 'energetic' || mood === 'upbeat';
+    const cutsPerClip = isEnergetic ? 3 : 2;
+    const cutInterval = durationPerClip / cutsPerClip;
+    
+    for (let i = 0; i < clips.length; i++) {
+      const clip = clips[i];
+      const originalDuration = clip.endTime - (clip.trimStart || 0);
+      const baseTrimStart = clip.trimStart || 0;
+      
+      // Split clip into smaller segments based on beats
+      for (let j = 0; j < cutsPerClip; j++) {
+        const segStart = j * cutInterval;
+        const segEnd = Math.min((j + 1) * cutInterval, originalDuration);
+        
+        if (segEnd - segStart > 0.3) {
+          newClips.push({
+            ...clip,
+            id: `${clip.id}_seg_${j}`,
+            trimStart: baseTrimStart + segStart,
+            trimEnd: baseTrimStart + segEnd,
+            speed: isEnergetic ? 1.05 : 1.0,
+            volume: 1.0,
+            reverse: false,
+          });
+        }
+      }
+    }
+
+    console.log(`Beat-sync: Split ${clips.length} clips into ${newClips.length} beat-synced segments`);
+    return newClips;
   }
 
   private parseVideoConfig(plan: any, request: ReelRequest): VideoConfig {

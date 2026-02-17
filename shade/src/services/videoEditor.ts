@@ -131,16 +131,26 @@ export class VideoEditor {
 
   async generate(plan: EditingPlan): Promise<string> {
     console.log(`🎬 Starting video generation: ${this.jobId}`);
+    console.log("Video config:", JSON.stringify(plan.video));
     
     const videoConfig = { ...DEFAULT_VIDEO, ...plan.video };
+    console.log("Final videoConfig:", JSON.stringify(videoConfig));
     const hasBackgroundMusic = !!plan.audio?.backgroundMusic;
     const musicPath = hasBackgroundMusic ? plan.audio.backgroundMusic : null;
     const musicVolume = plan.audio?.musicVolume ?? 0.5;
     
+    console.log("VIDEO EDITOR: plan.video =", JSON.stringify(plan.video));
+    
     const outputPath = path.join(this.outputDir, `${this.jobId}.${videoConfig.format}`);
     const tempVideoPath = path.join(this.tempDir, `${this.jobId}_video.mp4`);
     
-    const scaleFilter = `scale=${videoConfig.width}:${videoConfig.height}:force_original_aspect_ratio=decrease,pad=${videoConfig.width}:${videoConfig.height}:(ow-iw)/2:(oh-ih)/2,setsar=1`;
+    // Force vertical format (9:16 = 1080x1920) regardless of input
+    const targetWidth = videoConfig.width;
+    const targetHeight = videoConfig.height;
+    
+    console.log(`VIDEO EDITOR: Target resolution: ${targetWidth}x${targetHeight}`);
+    
+    const scaleFilter = `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2,setsar=1`;
     
     let videoArgs: string[] = [];
     let videoFilterParts: string[] = [];
@@ -154,7 +164,7 @@ export class VideoEditor {
       if (clip.speed !== 1) {
         clipFilter += `setpts=${1/clip.speed}*PTS,`;
       }
-      clipFilter += scaleFilter;
+      clipFilter += scaleFilter + "[outv]";
       videoFilterParts.push(clipFilter);
     } else {
       for (let i = 0; i < plan.clips.length; i++) {
@@ -174,31 +184,122 @@ export class VideoEditor {
       for (let i = 0; i < plan.clips.length; i++) {
         concatInputs += `[v${i}]`;
       }
-      videoFilterParts.push(`${concatInputs}concat=n=${plan.clips.length}:v=1:a=0`);
+      videoFilterParts.push(`${concatInputs}concat=n=${plan.clips.length}:v=1:a=0[outv]`);
     }
     
     const videoFilter = videoFilterParts.join(";");
+    console.log("FINAL videoFilter:", videoFilter);
+    console.log("PLAN transitions:", JSON.stringify(plan.transitions || []));
+    console.log("PLAN effects:", JSON.stringify(plan.effects || []));
     
     const inputArgs: string[] = [];
     for (const clip of plan.clips) {
       inputArgs.push("-i", clip.inputPath);
     }
+
+    // Check if we have transitions
+    const hasTransitions = plan.transitions && plan.transitions.length > 0 && plan.transitions.some((t: any) => t.type !== "none");
     
-    console.log("Step 1: Processing video...");
-    const videoArgsFinal = [
-      "-y",
-      ...inputArgs,
-      "-filter_complex", videoFilter,
-      "-map", "0:v",
-      "-c:v", "libx264",
-      "-preset", "ultrafast",
-      "-crf", "28",
-      "-r", "30",
-      tempVideoPath,
-    ];
-    
-    console.log("Video FFmpeg args:", videoArgsFinal.join(" "));
-    await this.runFFmpeg(videoArgsFinal);
+    if (hasTransitions && plan.clips.length > 1) {
+      console.log("Step 1a: Processing with xfade transitions...");
+      
+      // Build filter chain with xfade
+      let filterChain = "";
+      const scaleFilters: string[] = [];
+      
+      // First, scale all clips
+      for (let i = 0; i < plan.clips.length; i++) {
+        const clip = plan.clips[i];
+        let clipFilter = `[${i}:v]`;
+        
+        if (clip.trimStart !== undefined) {
+          clipFilter += `trim=start=${clip.trimStart},setpts=PTS-STARTPTS,`;
+        }
+        if (clip.speed !== 1) {
+          clipFilter += `setpts=${1/clip.speed}*PTS,`;
+        }
+        clipFilter += scaleFilter;
+        
+        scaleFilters.push(clipFilter + `[s${i}]`);
+      }
+      
+      filterChain = scaleFilters.join(";");
+      
+      // Apply xfade transitions between clips
+      const xfadeTypes = ["fade", "crossfade", "dissolve", "wipeleft", "wiperight", "slide_left", "slide_right", "zoom_in", "zoom_out"];
+      
+      for (let i = 0; i < plan.clips.length - 1; i++) {
+        const transition = plan.transitions?.[i] || { type: "crossfade", duration: 0.5 };
+        let transType = (transition.type || "crossfade").toLowerCase();
+        
+        // Map to xfade-compatible names
+        if (transType === "slide_left") transType = "slideleft";
+        if (transType === "slide_right") transType = "slideright";
+        if (transType === "zoom_in") transType = "zoomin";
+        if (transType === "zoom_out") transType = "zoomout";
+        
+        if (!xfadeTypes.includes(transType)) transType = "crossfade";
+        
+        const duration = transition.duration || 0.5;
+        
+        filterChain += `;[s${i}][s${i+1}]xfade=transition=${transType}:duration=${duration}[t${i}]`;
+      }
+      
+      // Concatenate all transitions
+      if (plan.clips.length === 2) {
+        filterChain += `;[t0]copy[outv]`;
+      } else {
+        // Multiple clips - chain the transitions
+        let concatChain = "[t0]";
+        for (let i = 1; i < plan.clips.length - 1; i++) {
+          concatChain += `[t${i}]`;
+        }
+        concatChain += `concat=n=${plan.clips.length - 1}:v=1:a=0[outv]`;
+        filterChain += `;${concatChain}`;
+      }
+      
+      console.log("Filter with xfade:", filterChain);
+      
+      try {
+        await this.runFFmpeg([
+          "-y",
+          ...inputArgs,
+          "-filter_complex", filterChain,
+          "-map", "[outv]",
+          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-r", "30",
+          tempVideoPath,
+        ]);
+        console.log("✅ Xfade transition succeeded");
+      } catch (e) {
+        console.log("❌ Xfade failed, using simple concat:", e);
+        // Fallback to simple concat
+        await this.runFFmpeg([
+          "-y",
+          ...inputArgs,
+          "-filter_complex", videoFilter,
+          "-map", "[outv]",
+          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-r", "30",
+          tempVideoPath,
+        ]);
+      }
+    } else {
+      // No transitions
+      console.log("Step 1: Processing video (simple concat)...");
+      const videoArgsFinal = [
+        "-y",
+        ...inputArgs,
+        "-filter_complex", videoFilter,
+        "-map", "[outv]",
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "28",
+        "-r", "30",
+        tempVideoPath,
+      ];
+      
+      console.log("Video FFmpeg args:", videoArgsFinal.join(" "));
+      await this.runFFmpeg(videoArgsFinal);
+    }
     
     if (!fs.existsSync(tempVideoPath)) {
       throw new Error("Video processing failed - no output file");

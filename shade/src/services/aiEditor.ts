@@ -162,21 +162,31 @@ export async function generateAdvancedEditingPlan(request: AdvancedEditingReques
     dramatic: "Dark effects, intense music, powerful transitions, emotional pacing"
   };
 
-  const userMessage = `Create an advanced viral-ready video edit.
+  const userMessage = `Create a viral TikTok/Reels style video editing plan.
 
-Target Duration: ${request.targetDuration || 15} seconds
-Target Style: ${request.targetStyle || 'viral'}
+CRITICAL REQUIREMENTS:
+1. ALWAYS output a JSON object with "clips", "transitions", "textOverlays", and "effects" arrays
+2. The "clips" array must contain ALL video clips from the input with specific trimStart and trimEnd times
+3. Use transitions between clips - choose from: fade, crossfade, dissolve, wipeleft, wiperight, slideleft, slideright, zoomin, zoomout
+4. textOverlays should have "text", "startTime", "endTime", "position", "style" fields
+
+Target: ${request.targetDuration || 15} seconds
+Style: ${request.targetStyle || 'viral'}
 Aspect Ratio: ${request.aspectRatio || '9:16'}
 
-Available Media:
+Media:
 ${mediaContext}
 ${audioContext}
 
 ${request.prompt ? `User Request: "${request.prompt}"` : ""}
 
-${styleGuide[request.targetStyle || 'viral']}
+For viral TikTok style:
+- Use quick cuts (each clip 1-3 seconds)
+- Add transitions between clips (crossfade recommended)
+- Add text overlays at key moments
+- Speed up clips slightly for energy
 
-Generate a complete editing plan that will go viral. Include beat-synced transitions, engaging text overlays, and effects that match the energy.`;
+Return ONLY valid JSON, no explanation.`;
 
   const completion = await openai.chat.completions.create({
     model: "meta-llama/llama-3.1-8b-instruct",

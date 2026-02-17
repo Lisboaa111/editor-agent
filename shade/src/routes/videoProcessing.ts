@@ -1,8 +1,21 @@
 import { Hono } from "hono";
-import { reelGenerator, type MediaFile, type ReelRequest } from "../services/reelGenerator";
-import { analyzeAudio } from "../services/audioAnalyzer";
+import { createTikTokStyleEdit } from "../services/tikTokEditor";
+import { v4 as uuidv4 } from "uuid";
+import path from "path";
+import fs from "fs";
 
 const app = new Hono();
+
+const jobs = new Map<string, {
+  id: string;
+  status: 'processing' | 'completed' | 'failed';
+  progress: number;
+  progressMessage: string;
+  outputUrls: string[];
+  errors: string[];
+  createdAt: number;
+  completedAt?: number;
+}>();
 
 interface VideoRequest {
   clips: Array<{
@@ -15,79 +28,85 @@ interface VideoRequest {
     duration: number;
     type: 'video' | 'image' | 'audio';
   }>;
-  audio?: {
-    id: string;
-    mediaUrl: string;
-    mediaName: string;
-    duration: number;
-    type: 'audio';
-  };
-  textOverlays?: Array<{
-    text: string;
-    startTime: number;
-    endTime: number;
-  }>;
-  quality?: string;
-  length?: number;
-  format?: string;
-  hasAudio?: boolean;
-  prompt?: string;
-  targetStyle?: 'viral' | 'cinematic' | 'fun' | 'educational' | 'dramatic';
-  aspectRatio?: '9:16' | '16:9' | '1:1';
-  generateVariations?: number;
-  plan?: object;
   musicUrl?: string;
+  length?: number;
 }
 
 app.post("/process", async (c) => {
   try {
     const body = await c.req.json() as VideoRequest;
-    const { clips, audio, prompt, quality, length, format, hasAudio, targetStyle, aspectRatio, generateVariations, plan, musicUrl } = body;
+    const { clips, musicUrl, length } = body;
 
     if (!clips || clips.length === 0) {
       return c.json({ error: "No clips provided" }, 400);
     }
 
-    // Map clips to media files
-    const mediaClips: MediaFile[] = clips.map(clip => ({
-      id: clip.id,
-      name: clip.mediaName,
-      path: clip.serverPath || clip.mediaUrl,
-      duration: clip.duration,
-      type: clip.type,
-    }));
+    console.log("🎬 Starting TikTok video generation...");
 
-    // Map audio
-    let audioFile: MediaFile | undefined;
-    if (audio) {
-      audioFile = {
-        id: audio.id,
-        name: audio.mediaName,
-        path: audio.mediaUrl || '',
-        duration: audio.duration,
-        type: 'audio',
-      };
+    const outputDir = "./output";
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Generate reel
-    const request: ReelRequest = {
-      clips: mediaClips,
-      audio: audioFile,
-      prompt,
-      targetDuration: length,
-      targetStyle: targetStyle || 'viral',
-      aspectRatio: aspectRatio || '9:16',
-      generateVariations,
-      musicUrl,
-    };
+    const videoClip = clips[0];
+    const inputPath = videoClip.serverPath || videoClip.mediaUrl;
+    const actualInputPath = inputPath.startsWith('/media/') ? '.' + inputPath : inputPath;
+    
+    let musicPath: string | undefined;
+    if (musicUrl) {
+      musicPath = musicUrl.startsWith('/media/') ? '.' + musicUrl : musicUrl;
+    }
 
-    const jobId = await reelGenerator.generateReel(request);
+    const jobId = uuidv4();
+    
+    const job = {
+      id: jobId,
+      status: 'processing' as const,
+      progress: 0,
+      progressMessage: 'Starting TikTok edit...',
+      outputUrls: [] as string[],
+      errors: [] as string[],
+      createdAt: Date.now(),
+    };
+    jobs.set(jobId, job);
+
+    (async () => {
+      try {
+        const directOutput = path.join(outputDir, `${jobId}.mp4`);
+        const job = jobs.get(jobId);
+        if (job) job.progressMessage = 'Creating quick cuts...';
+        
+        await createTikTokStyleEdit({
+          inputPath: actualInputPath,
+          outputPath: directOutput,
+          targetDuration: length || 15,
+          musicPath: musicPath,
+          musicVolume: 0.6,
+        });
+        
+        if (job) {
+          job.status = 'completed';
+          job.progress = 100;
+          job.progressMessage = 'Complete!';
+          job.outputUrls = [`/output/${path.basename(directOutput)}`];
+          job.completedAt = Date.now();
+        }
+        console.log("✅ TikTok video generated:", directOutput);
+      } catch (error: any) {
+        const job = jobs.get(jobId);
+        if (job) {
+          job.status = 'failed';
+          job.errors.push(error.message);
+        }
+        console.error("❌ TikTok generation failed:", error);
+      }
+    })();
 
     return c.json({
       success: true,
       jobId,
       status: "processing",
-      message: "Reel generation started",
+      message: "TikTok-style video generation started",
     });
 
   } catch (error) {
@@ -98,7 +117,7 @@ app.post("/process", async (c) => {
 
 app.get("/status/:jobId", async (c) => {
   const jobId = c.req.param("jobId");
-  const job = reelGenerator.getJob(jobId);
+  const job = jobs.get(jobId);
   
   if (!job) {
     return c.json({ error: "Job not found" }, 404);
@@ -117,61 +136,20 @@ app.get("/status/:jobId", async (c) => {
 });
 
 app.get("/jobs", async (c) => {
-  const jobs = reelGenerator.listJobs();
-  
   return c.json({
-    jobs: jobs.map(job => ({
+    jobs: Array.from(jobs.values()).map(job => ({
       jobId: job.id,
       status: job.status,
       progress: job.progress,
-      message: job.progressMessage,
       outputCount: job.outputUrls.length,
       createdAt: job.createdAt,
     })),
   });
 });
 
-app.delete("/jobs/:jobId", async (c) => {
-  const jobId = c.req.param("jobId");
-  const deleted = reelGenerator.deleteJob(jobId);
-  
-  if (!deleted) {
-    return c.json({ error: "Job not found" }, 404);
-  }
-  
-  return c.json({ success: true, message: "Job deleted" });
-});
-
-app.post("/analyze-audio", async (c) => {
-  try {
-    const body = await c.req.json();
-    const { audioUrl } = body;
-
-    if (!audioUrl) {
-      return c.json({ error: "audioUrl required" }, 400);
-    }
-
-    // In production, download the audio first
-    // For now, return mock analysis
-    return c.json({
-      success: true,
-      analysis: {
-        duration: 30,
-        bpm: 120,
-        beats: [0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
-        energy: "high",
-        mood: "upbeat",
-      },
-    });
-  } catch (error) {
-    console.error("Audio analysis error:", error);
-    return c.json({ error: "Failed to analyze audio" }, 500);
-  }
-});
-
 app.get("/download/:jobId", async (c) => {
   const jobId = c.req.param("jobId");
-  const job = reelGenerator.getJob(jobId);
+  const job = jobs.get(jobId);
   
   if (!job) {
     return c.json({ error: "Job not found" }, 404);
@@ -181,8 +159,20 @@ app.get("/download/:jobId", async (c) => {
     return c.json({ error: "Video not ready" }, 400);
   }
   
-  const outputUrl = job.outputUrls[0];
-  return c.redirect(outputUrl);
+  return c.redirect(job.outputUrls[0]);
+});
+
+app.post("/analyze-audio", async (c) => {
+  return c.json({
+    success: true,
+    analysis: {
+      duration: 30,
+      bpm: 120,
+      beats: [0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
+      energy: "high",
+      mood: "upbeat",
+    },
+  });
 });
 
 export default app;
