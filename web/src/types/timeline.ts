@@ -8,6 +8,7 @@ export interface MediaItem {
   width?: number;
   height?: number;
   file?: File;
+  serverPath?: string;
 }
 
 export interface Clip {

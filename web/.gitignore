@@ -6,3 +6,13 @@ testnet.sh
 .env.production
 *.log
 .DS_Store
+
+# Media & Output
+media/
+output/
+temp/
+*.mp4
+*.mov
+*.avi
+*.webm
+*.mkv

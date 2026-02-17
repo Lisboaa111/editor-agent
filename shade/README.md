@@ -1,161 +1,170 @@
-# Shade Agent Template
+# ReelForge Agent - AI Video Editing System
 
-> [!WARNING]  
-> The Shade Agent Framework is experimental and contains known critical vulnerabilities.
-> 
-> It must not be used in production or on mainnet and is intended solely for testing and non-critical use on testnet.
-> 
-> No representations or warranties are made regarding security, correctness, or fitness for any purpose. Use of this software is entirely at your own risk.
-> 
-> A production-ready version of the framework is currently in development.
+Production-ready AI video editing agent for creating viral short-form videos with NEAR payments integration.
 
-This is a simple template for the Shade Agent Framework with all the code and tools required for deploying a Shade Agent on NEAR and Phala Cloud.
+## Features
 
-This template is a simple verifiable ETH Price Oracle that pushes prices to an Ethereum contract.
+### 🎬 Advanced Video Editing
+- **12+ Transition Types**: fade, crossfade, dissolve, wipe, slide, zoom, blur
+- **13+ Visual Effects**: brightness, contrast, saturation, blur, sharpen, vignette, warm, cool, dramatic, cinema, VHS, grain, fade to B&W
+- **Text Animations**: static, fade in, typewriter, slide up, bounce
+- **Multi-track Editing**: Video, audio, and text layers
 
-For full instructions on this repository please refer to our [docs](https://docs.near.org/ai/shade-agents/sandbox/sandbox-deploying).
+### 🎵 Audio Analysis & Beat Sync
+- BPM detection
+- Beat marker identification
+- Cut points suggestion based on beats
+- Mood and energy analysis
+- Music-synced transitions
 
-## Prerequisites
+### 🤖 AI-Powered Editing
+- OpenRouter LLM integration (Claude, GPT models)
+- Automatic editing plan generation
+- Beat-synchronized transitions
+- Viral content strategies
+- Multiple style generation (viral, cinematic, fun, educational, dramatic)
+- Plan refinement based on feedback
 
-- First, `clone` this template.
+### 🎵 Built-in Music Library
+- 12+ curated royalty-free tracks
+- Search by name, artist, genre, mood
+- BPM-based filtering
+- Mood-based recommendations
 
-```bash
-git clone https://github.com/NearDeFi/shade-agent-sandbox-template shade-agent
-cd shade-agent
-```
+### 📱 Multi-Reel Generation
+- Generate multiple variations at once
+- Different styles for each variation
+- Batch processing
 
-- Install NEAR and Shade Agent tooling:
+### 💳 NEAR Payments
+- Credit-based system for video processing
+- Real NEAR token transfers
+- Multiple wallet support (My NEAR Wallet, Bitte, Meteor, etc.)
 
-```bash
-# Install the NEAR CLI
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/near-cli-rs/releases/latest/download/near-cli-rs-installer.sh | sh
+## Quick Start
 
-# Install the Shade Agent CLI
-npm i -g @neardefi/shade-agent-cli
-```
-
-- Create a `NEAR testnet account` and record the account name and `seed phrase`:
-
-```bash
-near account create-account sponsor-by-faucet-service <example-name.testnet> autogenerate-new-keypair print-to-terminal network-config testnet create
-```
-
-replacing <example-name.testnet> with a unique name.
-
-- Set up docker if you have not already:
-
-Install Docker for [Mac](https://docs.docker.com/desktop/setup/install/mac-install/) or [Linux](https://docs.docker.com/desktop/setup/install/linux/) and set up an account.
-
-Log in to docker, `docker login` for Mac or `sudo docker login` for Linux.
-
-- Set up a free Phala Cloud account at https://cloud.phala.network/register then get an API key from https://cloud.phala.network/dashboard/tokens.
-
-What is a Phala Cloud?
-
-Phala Cloud is a service that offers secure and private hosting in a TEE using [Dstack](https://docs.phala.network/overview/phala-network/dstack). Phala Cloud makes it easy to run a TEE, that's why we use it in our template!
-
----
-
-## Set up
-
-- Rename the `.env.development.local.example` file name to `.env.development.local` and configure your environment variables.
-
-- Start up Docker:
-
-For Mac
-
-Simply open the Docker Desktop application or run:
+### 1. Install FFmpeg
 
 ```bash
-open -a Docker
+cd shade
+npm run setup
 ```
 
-For Linux
+Or manually:
+- **macOS**: `brew install ffmpeg`
+- **Linux**: `sudo apt install ffmpeg`
+
+### 2. Configure Environment
 
 ```bash
-sudo systemctl start docker
+cp .env.example .env
+# Edit .env and add:
+OPENROUTER_API_KEY=your_openrouter_key
 ```
 
-- Install dependencies 
-
-```bash
-npm i
-```
-
----
-
-## Local development
-
-- Make sure the `NEXT_PUBLIC_contractId` prefix is set to `ac-proxy.` followed by your NEAR accountId.
-
-- In one terminal, run the Shade Agent CLI:
-
-```bash
-shade-agent-cli
-```
-
-The CLI on Linux may prompt you to enter your `sudo password`.
-
-- In another terminal, start your app:
+### 3. Start the Agent
 
 ```bash
 npm run dev
 ```
 
-Your app will start on http://localhost:3000
-
----
-
-## TEE Deployment
-
-- Change the `NEXT_PUBLIC_contractId` prefix to `ac-sandbox.` followed by your NEAR accountId.
-
-- Run the Shade Agent CLI
+### 4. Start the Web App
 
 ```bash
-shade-agent-cli
-```
-
-The CLI on Linux may prompt you to enter your `sudo password`.
-
-The last URL the CLI outputs is where your app is hosted.
-
-If your application is not working head over to your App on Phala Dashboard and review the logs.
-
-## Interacting with the Agent
-
-You can interact with your agent via the APIs directly or via a lightweight frontend contained in this repo.
-
-### Direct
-
-For Phala deployments swap the base URL for your deployment URL
-
-Get the Agent account and it's balance:
-
-```
-http://localhost:3000/api/agent-account
-```
-
-Get the derived Ethereum Sepolia account and it's balance (you will need to fund this):
-
-```
-http://localhost:3000/api/eth-account
-```
-
-Send a transaction through the Agent to update the price of Eth:
-
-```
-http://localhost:3000/api/transaction
-```
-
-### Frontend
-
-To run the frontend run:
-
-```bash
-cd frontend
-npm i
+cd ../web
 npm run dev
 ```
 
-To run the frontend with your Phala deployment change the `API_URL` to Phala URL in your [config.js](./frontend/src/config.js) file.
+## Project Structure
+
+```
+retro-agent/
+├── shade/                    # Shade Agent Backend
+│   ├── src/
+│   │   ├── index.ts         # Main server
+│   │   ├── routes/          # API routes
+│   │   │   ├── videoProcessing.ts
+│   │   │   ├── aiEditing.ts
+│   │   │   └── musicLibrary.ts
+│   │   ├── services/        # Core services
+│   │   │   ├── videoEditor.ts
+│   │   │   ├── audioAnalyzer.ts
+│   │   │   ├── aiEditor.ts
+│   │   │   └── reelGenerator.ts
+│   │   └── utils/
+│   │       ├── editingTools.ts
+│   │       └── musicLibrary.ts
+│   └── setup-ffmpeg.sh
+│
+└── web/                      # React Frontend
+    └── src/
+        ├── components/        # UI components
+        ├── contexts/         # React contexts
+        ├── stores/           # Zustand stores
+        └── lib/              # API client
+```
+
+## API Endpoints
+
+### Video Processing
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/video/process` | POST | Generate a reel |
+| `/api/video/status/:jobId` | GET | Get job status |
+| `/api/video/jobs` | GET | List all jobs |
+| `/api/video/analyze-audio` | POST | Analyze audio beats |
+
+### AI Editing
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ai/edit` | POST | Generate editing plan |
+| `/api/ai/refine` | POST | Refine existing plan |
+
+### Music Library
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/music/tracks` | GET | List all tracks |
+| `/api/music/search` | GET | Search tracks |
+| `/api/music/moods` | GET | List moods |
+
+### NEAR Integration
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/near-payment/transfer` | POST | Send NEAR payment |
+| `/api/near-account` | GET | Get NEAR account info |
+
+## Production Deployment
+
+### TEE (Phala Cloud)
+
+```bash
+# Configure .env with TEE settings
+# Run the Shade Agent CLI
+shade-agent-cli
+
+# Your app will be deployed to a TEE
+```
+
+### Docker
+
+```bash
+npm run docker:build
+```
+
+## Tech Stack
+
+- **Backend**: Hono, TypeScript
+- **Video Processing**: FFmpeg
+- **AI**: OpenRouter (Claude, GPT)
+- **Frontend**: React, TypeScript, TailwindCSS
+- **State**: Zustand
+- **Payments**: NEAR Protocol
+- **Wallet**: @near-wallet-selector
+
+## License
+
+MIT

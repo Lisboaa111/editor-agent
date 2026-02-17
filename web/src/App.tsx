@@ -7,14 +7,14 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { NearWalletProvider } from "./contexts/NearWallet"
-import { WalletPanel, ChatPanel } from "./components/AppComponents"
+import { WalletPanel, ChatPanel, ExportPanel } from "./components/AppComponents"
 import { useCreditsStore } from "./stores/credits"
 import { calculatePrice } from "./config"
 import { Timeline } from "./components/Timeline"
 import { MediaLibrary } from "./components/MediaLibrary"
-import { PropertiesPanel } from "./components/PropertiesPanel"
 import { useTimelineStore } from "./stores/timelineStore"
 import { MediaItem, generateId } from "./types/timeline"
+import { uploadMedia } from "./lib/agent"
 
 interface ChatMessage {
   id: string
@@ -42,7 +42,7 @@ function AppContent() {
   const [previewType, setPreviewType] = useState<'video' | 'image' | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   
-  const [exportSettings] = useState<ExportSettings>({
+  const [exportSettings, setExportSettings] = useState<ExportSettings>({
     quality: "1080p",
     length: 15,
     format: "mp4",
@@ -52,9 +52,9 @@ function AppContent() {
   const { user } = useCreditsStore()
   const { 
     addClip, 
-    currentTime,
+    tracks,
+    textOverlays,
     setCurrentTime,
-    addTextOverlay,
   } = useTimelineStore()
   
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -140,19 +140,29 @@ function AppContent() {
   }
 
   const handleImportMedia = async (newFiles: File[]) => {
-    // Get duration for videos and add to timeline
+    const uploadedFiles: { file: File; serverPath: string }[] = [];
+    
     for (const file of newFiles) {
+      try {
+        const result = await uploadMedia(file);
+        uploadedFiles.push({ file, serverPath: result.path });
+      } catch (error) {
+        console.error("Failed to upload file:", file.name, error);
+      }
+    }
+
+    for (const { file, serverPath } of uploadedFiles) {
       if (file.type.startsWith('video/')) {
         const dur = await getVideoDuration(file)
         Object.defineProperty(file, 'duration', { value: dur, writable: true })
         
-        // Auto-add to timeline
         const media: MediaItem = {
           id: generateId(),
           name: file.name,
           type: 'video',
           url: URL.createObjectURL(file),
           duration: dur,
+          serverPath,
         }
         addClip('video-1', media)
       } else if (file.type.startsWith('image/')) {
@@ -161,13 +171,14 @@ function AppContent() {
           name: file.name,
           type: 'image',
           url: URL.createObjectURL(file),
-          duration: 5, // Default image duration
+          duration: 5,
+          serverPath,
         }
         addClip('video-1', media)
       }
     }
     
-    setMediaFiles(prev => [...prev, ...newFiles])
+    setMediaFiles(prev => [...prev, ...uploadedFiles.map(f => f.file)])
     
     const firstFile = newFiles[0]
     if (firstFile) {
@@ -213,19 +224,6 @@ function AppContent() {
     }
 
     addClip('video-1', media)
-  }
-
-  const handleAddText = () => {
-    addTextOverlay({
-      text: 'New Text',
-      startTime: currentTime,
-      endTime: currentTime + 5,
-      x: 50,
-      y: 50,
-      fontSize: 32,
-      fontFamily: 'Inter',
-      color: '#ffffff',
-    })
   }
 
   return (
@@ -346,8 +344,29 @@ function AppContent() {
         )}
 
         {!showChat && rightOpen && (
-          <PropertiesPanel 
-            onAddText={handleAddText}
+          <ExportPanel 
+            settings={exportSettings}
+            onChange={setExportSettings}
+            credits={user.credits}
+            timelineClips={tracks.flatMap(t => t.clips).map(c => ({
+              id: c.id,
+              mediaUrl: c.media?.url || '',
+              mediaName: c.media?.name || '',
+              serverPath: c.media?.serverPath || '',
+              startTime: c.startTime,
+              endTime: c.endTime,
+              duration: c.endTime - c.startTime,
+              type: c.media?.type || 'video',
+            }))}
+            textOverlays={textOverlays.map(o => ({
+              text: o.text,
+              startTime: o.startTime,
+              endTime: o.endTime,
+              x: o.x,
+              y: o.y,
+              fontSize: o.fontSize,
+              color: o.color,
+            }))}
           />
         )}
 

@@ -11,12 +11,25 @@ import {
   X,
   FileVideo,
   Film,
+  Sparkles,
+  Download,
+  RefreshCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useNearWallet } from "../contexts/NearWallet"
 import { useCreditsStore } from "../stores/credits"
-import { PACKAGES, calculatePrice, EXPORT_QUALITY, VIDEO_FORMATS, VIDEO_LENGTHS } from "../config"
+import { API_URL } from "../config";
+import { 
+  generateEditingPlan, 
+  processVideo, 
+  getJobStatus, 
+  refineEditingPlan,
+  type EditingPlan,
+  type TimelineClip,
+  type TextOverlay 
+} from "../lib/agent";
+import { PACKAGES, calculatePrice, EXPORT_QUALITY, VIDEO_FORMATS, VIDEO_LENGTHS } from "../config";
 
 const AGENT_ACCOUNT = "myagent123.testnet"
 
@@ -311,17 +324,131 @@ export function MediaLibrary({
 export function ExportPanel({ 
   settings,
   onChange,
-  onExport,
   credits,
-  canExport 
+  timelineClips = [],
+  textOverlays = [],
 }: { 
   settings: ExportSettings
   onChange: (settings: ExportSettings) => void
-  onExport: () => void
   credits: number
-  canExport: boolean
+  canExport?: boolean
+  timelineClips?: TimelineClip[]
+  textOverlays?: TextOverlay[]
 }) {
-  const price = calculatePrice(settings.quality, settings.length, settings.format, settings.hasAudio)
+  const _price = calculatePrice(settings.quality, settings.length, settings.format, settings.hasAudio)
+  const canExport = credits >= _price
+  
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [jobStatus, setJobStatus] = useState<string>('idle')
+  const [progress, setProgress] = useState(0)
+  const [editingPlan, setEditingPlan] = useState<EditingPlan | null>(null)
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [refineFeedback, setRefineFeedback] = useState('')
+
+  const handleGenerateWithAI = async () => {
+    if (timelineClips.length === 0) {
+      alert('Add clips to timeline first')
+      return
+    }
+    
+    setIsGenerating(true)
+    try {
+      const result = await generateEditingPlan(
+        timelineClips,
+        textOverlays,
+        aiPrompt || undefined,
+        settings.quality,
+        settings.format
+      )
+      
+      if (result.success && result.plan) {
+        setEditingPlan(result.plan)
+        alert('AI editing plan generated! Click "Generate Video" to process.')
+      }
+    } catch (error) {
+      console.error('AI generation error:', error)
+      alert('Failed to generate AI plan. Make sure the agent is running with OpenRouter API key.')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const handleGenerateVideo = async () => {
+    if (timelineClips.length === 0) {
+      alert('Add clips to timeline first')
+      return
+    }
+    
+    if (!canExport) {
+      alert('Not enough credits!')
+      return
+    }
+    
+    setIsProcessing(true)
+    try {
+      const result = await processVideo(
+        timelineClips,
+        textOverlays,
+        settings.quality,
+        settings.length,
+        settings.format,
+        settings.hasAudio,
+        editingPlan || undefined
+      )
+      
+      if (result.success) {
+        setJobId(result.jobId)
+        setJobStatus('processing')
+        
+        // Poll for status
+        const pollStatus = async () => {
+          const status = await getJobStatus(result.jobId)
+          setJobStatus(status.status)
+          setProgress(status.progress)
+          
+          if (status.status === 'completed') {
+            setIsProcessing(false)
+            alert('Video ready! Click Download to save.')
+          } else if (status.status === 'failed') {
+            setIsProcessing(false)
+            alert('Video processing failed: ' + status.error)
+          } else {
+            setTimeout(pollStatus, 2000)
+          }
+        }
+        
+        setTimeout(pollStatus, 2000)
+      }
+    } catch (error) {
+      console.error('Video processing error:', error)
+      alert('Failed to process video')
+      setIsProcessing(false)
+    }
+  }
+
+  const handleDownload = () => {
+    if (jobId) {
+      window.open(`${API_URL}/api/video/download/${jobId}`, '_blank')
+    }
+  }
+
+  const handleRefine = async () => {
+    if (!editingPlan || !refineFeedback) return
+    
+    try {
+      const result = await refineEditingPlan(editingPlan, refineFeedback)
+      if (result.success && result.plan) {
+        setEditingPlan(result.plan)
+        setRefineFeedback('')
+        alert('Plan refined!')
+      }
+    } catch (error) {
+      console.error('Refine error:', error)
+      alert('Failed to refine plan')
+    }
+  }
 
   return (
     <div className="w-56 border-l border-[#262626] bg-[#0d0d0d] p-4 space-y-4">
@@ -382,7 +509,7 @@ export function ExportPanel({
       <div className="pt-4 border-t border-[#262626] space-y-2">
         <div className="flex justify-between text-xs">
           <span className="text-[#525252]">Cost</span>
-          <span className="text-[#d4d4d4]">{price} credits</span>
+          <span className="text-[#d4d4d4]">{_price} credits</span>
         </div>
         <div className="flex justify-between text-xs">
           <span className="text-[#525252]">Balance</span>
@@ -390,13 +517,77 @@ export function ExportPanel({
         </div>
       </div>
 
-      <Button 
-        className="w-full" 
-        onClick={onExport}
-        disabled={!canExport}
-      >
-        Export {settings.format.toUpperCase()}
-      </Button>
+      {/* AI Prompt Input */}
+      <div className="pt-4 border-t border-[#262626] space-y-2">
+        <label className="text-xs text-[#525252] block">AI Prompt (optional)</label>
+        <input
+          type="text"
+          value={aiPrompt}
+          onChange={(e) => setAiPrompt(e.target.value)}
+          placeholder="e.g., Make it exciting with quick cuts"
+          className="w-full h-8 bg-[#171717] border border-[#303030] rounded px-2 text-xs"
+        />
+      </div>
+
+      {/* Action Buttons */}
+      <div className="space-y-2">
+        <Button 
+          className="w-full gap-2" 
+          onClick={handleGenerateWithAI}
+          disabled={isGenerating || timelineClips.length === 0}
+          variant="outline"
+        >
+          {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+          Generate AI Plan
+        </Button>
+        
+        {editingPlan && (
+          <div className="text-xs text-[#525252] p-2 bg-[#171717] rounded">
+            <p className="font-medium text-[#a3a3a3]">AI Plan Ready:</p>
+            <p className="mt-1">{editingPlan.summary}</p>
+            <div className="mt-2 flex gap-1">
+              <input
+                type="text"
+                value={refineFeedback}
+                onChange={(e) => setRefineFeedback(e.target.value)}
+                placeholder="Request changes..."
+                className="flex-1 h-6 bg-[#0d0d0d] border border-[#303030] rounded px-1 text-xs"
+              />
+              <Button size="sm" onClick={handleRefine} className="h-6 px-2">
+                <RefreshCw className="w-3 h-3" />
+              </Button>
+            </div>
+          </div>
+        )}
+        
+        <Button 
+          className="w-full gap-2" 
+          onClick={handleGenerateVideo}
+          disabled={isProcessing || !canExport || timelineClips.length === 0}
+        >
+          {isProcessing ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Processing {progress}%
+            </>
+          ) : (
+            <>
+              <Video className="w-4 h-4" />
+              Generate Video
+            </>
+          )}
+        </Button>
+        
+        {jobStatus === 'completed' && (
+          <Button 
+            className="w-full gap-2 bg-[#00c08b] hover:bg-[#00a07a]" 
+            onClick={handleDownload}
+          >
+            <Download className="w-4 h-4" />
+            Download Video
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

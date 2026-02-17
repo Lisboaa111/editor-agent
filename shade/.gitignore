@@ -1,7 +1,7 @@
 # dependencies
 **/node_modules
 **/.pnp
-.pnp.*
+.pnp.**
 **/.yarn/*
 !.yarn/patches
 !.yarn/plugins
@@ -44,3 +44,17 @@ contract/target
 
 # new releases
 new-release/
+
+# Media files
+media/
+output/
+temp/
+*.mp4
+*.mov
+*.avi
+*.webm
+*.mkv
+*.wav
+*.mp3
+
+dist
