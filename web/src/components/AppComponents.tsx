@@ -404,7 +404,8 @@ export function ExportPanel({
         settings.format,
         settings.hasAudio,
         editingPlan || undefined,
-        selectedMusic?.url || undefined
+        selectedMusic?.url || undefined,
+        settings.aspectRatio || '9:16'
       )
       
       if (result.success) {
@@ -487,6 +488,19 @@ export function ExportPanel({
             {VIDEO_FORMATS.map(f => (
               <option key={f.id} value={f.id}>{f.label}</option>
             ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs text-[#525252] block mb-1">Aspect Ratio</label>
+          <select
+            value={settings.aspectRatio || '9:16'}
+            onChange={(e) => onChange({ ...settings, aspectRatio: e.target.value as '9:16' | '16:9' | '1:1' })}
+            className="w-full h-8 bg-[#171717] border border-[#303030] rounded px-2 text-xs"
+          >
+            <option value="9:16">9:16 (Vertical/Reel)</option>
+            <option value="16:9">16:9 (Landscape)</option>
+            <option value="1:1">1:1 (Square)</option>
           </select>
         </div>
 

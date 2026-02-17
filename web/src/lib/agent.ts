@@ -192,7 +192,8 @@ export async function processVideo(
   format: string = 'mp4',
   hasAudio: boolean = true,
   plan?: EditingPlan,
-  musicUrl?: string
+  musicUrl?: string,
+  aspectRatio: '9:16' | '16:9' | '1:1' = '9:16'
 ): Promise<{ success: boolean; jobId: string; status: string }> {
   const res = await fetch(`${API_URL}/api/video/process`, {
     method: "POST",
@@ -206,6 +207,7 @@ export async function processVideo(
       hasAudio,
       plan,
       musicUrl,
+      aspectRatio,
     }),
   });
   if (!res.ok) {

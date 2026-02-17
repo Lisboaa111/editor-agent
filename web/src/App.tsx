@@ -28,6 +28,7 @@ interface ExportSettings {
   length: number
   format: string
   hasAudio: boolean
+  aspectRatio: '9:16' | '16:9' | '1:1'
 }
 
 function AppContent() {
@@ -47,6 +48,7 @@ function AppContent() {
     length: 15,
     format: "mp4",
     hasAudio: true,
+    aspectRatio: "9:16",
   })
 
   const { user } = useCreditsStore()

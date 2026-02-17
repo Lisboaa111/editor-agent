@@ -227,9 +227,25 @@ class ReelGenerator {
     const aspectRatio = request.aspectRatio || '9:16';
     const [w, h] = aspectRatio.split(':').map(Number);
     
+    let width = 1080;
+    let height = 1920;
+    
+    if (aspectRatio === '9:16') {
+      width = 1080;
+      height = 1920;
+    } else if (aspectRatio === '16:9') {
+      width = 1920;
+      height = 1080;
+    } else if (aspectRatio === '1:1') {
+      width = 1080;
+      height = 1080;
+    }
+    
+    console.log("parseVideoConfig: aspectRatio =", aspectRatio, "-> width =", width, "height =", height);
+    
     return {
-      width: w === 9 ? 1080 : w === 16 ? 1920 : w,
-      height: h === 16 ? 1920 : h === 9 ? 1080 : h,
+      width,
+      height,
       fps: 30,
       bitrate: '5M',
       codec: 'libx264',
